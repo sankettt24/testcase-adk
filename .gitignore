@@ -1,7 +1,9 @@
 venv/
 .venv/
 .adk/
-__pycache__/
+
+/.adk
+/__pycache__/
 *.pyc
 *.pyo
 *.pyd
