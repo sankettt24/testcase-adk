@@ -1,7 +1,17 @@
-"""Test Case Generation Agent using Google ADK."""
+"""Test Case Generation Agent using Google ADK with Web Crawling."""
 
 import json
+import sys
+import os
+from pathlib import Path
 from google.adk.agents import Agent
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+from tools.crawl_tool import crawl_page_sync
+from tools.ui_extractor import extract_ui_elements
+from tools.ui_graph_builder import build_ui_graph, build_complete_ui_flow
 
 
 # Tool 1: Parse User Story
@@ -266,30 +276,94 @@ def format_test_cases_as_markdown(test_cases_json: str) -> dict:
     }
 
 
-# Root Agent
+# Tool 4: Crawl Website
+def crawl_website(url: str) -> dict:
+    """Crawl a website and extract content using Crawl4AI."""
+    result = crawl_page_sync(url)
+    return {
+        "success": result.get("success"),
+        "url": url,
+        "preview": result.get("markdown", "")[:1000] if result.get("success") else None,
+        "has_html": bool(result.get("html")),
+        "error": result.get("error")
+    }
+
+
+# Tool 5: Extract UI Elements
+def extract_ui_elements_tool(html_content: str) -> dict:
+    """Extract UI elements from HTML content."""
+    if not html_content:
+        return {"error": "HTML content is empty", "elements": {}}
+    
+    elements = extract_ui_elements(html_content)
+    return {
+        "buttons": elements.get("buttons", [])[:5],
+        "inputs": elements.get("inputs", [])[:3],
+        "dropdowns": elements.get("dropdowns", [])[:3],
+        "links": elements.get("links", [])[:5],
+        "forms": elements.get("forms", []),
+        "summary": elements.get("summary", {})
+    }
+
+
+# Tool 6: Build UI Action Graph
+def build_ui_action_graph(html_content: str) -> dict:
+    """Build UI action graph from HTML content."""
+    if not html_content:
+        return {"error": "HTML content is empty", "graph": {}}
+    
+    elements = extract_ui_elements(html_content)
+    graph = build_ui_graph(elements)
+    page_type = graph.get("page_type")
+    flows = build_complete_ui_flow(page_type, elements)
+    
+    return {
+        "page_type": page_type,
+        "available_actions": graph.get("available_actions", []),
+        "user_flows": graph.get("user_flows", []),
+        "example_flows": [flow["step"] for flow in flows[:3]]
+    }
+
+
 root_agent = Agent(
     name="testcase_generation_agent",
     model="gemini-2.0-flash",
-    description="An AI QA engineer agent that generates test cases from user stories.",
-    instruction="""You are a QA Engineer. Analyze user stories and generate comprehensive test cases.
+    description="An AI QA engineer agent that generates test cases from user stories or websites.",
+    instruction="""You are an expert QA Engineer. You can generate comprehensive test cases in two ways:
 
-Steps:
+**Mode 1: Story-Based (Recommended for given user stories)**
 1. Use parse_user_story to extract actor, action, and goal
-2. Use generate_test_cases to create test templates (positive, negative, edge)
-3. Refine the test cases based on the specific story content
-4. Use format_test_cases_as_markdown to format output
+2. Use generate_test_cases to create test cases (positive, negative, edge)
+3. Use format_test_cases_as_markdown to format the output
 
-For each test case type based on the story make 3 test cases for each type:
-- **Positive**: User successfully performs the desired action with valid inputs
-- **Negative**: System handles errors (invalid inputs, missing fields, unauthorized access, system errors)
-- **Edge**: Boundary conditions, special characters, extreme values, concurrent operations
+**Mode 2: Website-Based (For URLs)**
+1. Use crawl_website to fetch page content
+2. Use extract_ui_elements_tool to identify interactive elements
+3. Use build_ui_action_graph to understand user flows
+4. Generate test cases based on the UI structure and interactions
 
-Make test cases specific to the user story content, not generic.
-Include realistic preconditions, numbered steps, and concrete expected results.
-""",
+**Test Case Requirements:**
+For each type (positive, negative, edge), create 3 detailed test cases:
+- **Positive**: Valid inputs, happy path, expected success
+- **Negative**: Error handling, invalid inputs, missing fields, unauthorized access
+- **Edge**: Boundary conditions, special characters, extreme values, security concerns
+
+Always provide:
+- Test ID (TC-P001, TC-N001, TC-E001, etc.)
+- Title describing what is tested
+- Type, Priority, Description
+- Preconditions (setup requirements)
+- Numbered steps (1, 2, 3...)
+- Expected results
+
+Make test cases specific to the story or website context, not generic.""",
     tools=[
         parse_user_story,
         generate_test_cases,
         format_test_cases_as_markdown,
+        crawl_website,
+        extract_ui_elements_tool,
+        build_ui_action_graph
     ],
 )
+
