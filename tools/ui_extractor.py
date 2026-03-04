@@ -1,5 +1,6 @@
 import re
 from typing import Dict, List
+from pathlib import Path
 
 
 def extract_ui_elements(html_content: str, markdown_content: str = "") -> Dict:
@@ -54,5 +55,34 @@ def extract_ui_elements(html_content: str, markdown_content: str = "") -> Dict:
         "has_cart": bool(re.search(r'(cart|basket|shopping|checkout)', html_content, re.IGNORECASE)),
         "has_login": bool(re.search(r'(login|signin|username|password)', html_content, re.IGNORECASE))
     }
+    
+    return elements
+
+
+def extract_ui_from_crawled_files() -> Dict:
+    """Extract UI elements from the latest crawled HTML/markdown files."""
+    content_dir = Path(__file__).parent.parent / "crawled_content"
+    
+    if not content_dir.exists():
+        return {"success": False, "error": "No crawled content found. Run crawl_website first."}
+    
+    markdown_files = list(content_dir.glob("*_markdown.md"))
+    html_files = list(content_dir.glob("*_html.html"))
+    
+    if not markdown_files or not html_files:
+        return {"success": False, "error": "No crawled content found. Run crawl_website first."}
+    
+    # Get the most recent files
+    latest_md = max(markdown_files, key=lambda x: x.stat().st_mtime)
+    latest_html = max(html_files, key=lambda x: x.stat().st_mtime)
+    
+    html_content = latest_html.read_text(encoding="utf-8")
+    markdown_content = latest_md.read_text(encoding="utf-8")
+    
+    # Extract UI elements
+    elements = extract_ui_elements(html_content, markdown_content)
+    elements["source_html_file"] = str(latest_html)
+    elements["source_markdown_file"] = str(latest_md)
+    elements["success"] = True
     
     return elements

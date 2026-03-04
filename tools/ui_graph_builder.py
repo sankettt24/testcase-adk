@@ -1,5 +1,6 @@
 import json
 from typing import Dict, List
+from pathlib import Path
 
 
 def build_ui_graph(elements: Dict) -> Dict:
@@ -123,3 +124,30 @@ def build_complete_ui_flow(page_type: str, elements: Dict) -> Dict:
     }
     
     return flows.get(page_type, flows["homepage"])
+
+
+def build_complete_ui_flow_from_crawled() -> Dict:
+    """Build complete UI flow from the latest crawled HTML/markdown files."""
+    from tools.ui_extractor import extract_ui_from_crawled_files
+    
+    # Extract UI elements from crawled files
+    elements_result = extract_ui_from_crawled_files()
+    
+    if not elements_result.get("success"):
+        return {"success": False, "error": elements_result.get("error", "Failed to extract UI elements")}
+    
+    # Build UI graph from extracted elements
+    ui_graph = build_ui_graph(elements_result)
+    
+    # Get page type and build user flows
+    page_type = infer_page_type(elements_result)
+    user_flows = build_complete_ui_flow(page_type, elements_result)
+    
+    return {
+        "success": True,
+        "source_html_file": elements_result.get("source_html_file"),
+        "source_markdown_file": elements_result.get("source_markdown_file"),
+        "ui_graph": ui_graph,
+        "user_flows": user_flows,
+        "extracted_elements": {k: v for k, v in elements_result.items() if k not in ["source_html_file", "source_markdown_file", "success"]}
+    }
